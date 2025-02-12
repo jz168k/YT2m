@@ -1,9 +1,8 @@
-name: Auto Update M3U8 and Push to GitHub
+name: Auto Update File to GitHub
 
 on:
   schedule:
-    - cron: "5 4 * * *"  # 每天中午 12:05 UTC+8 (UTC時間 04:05)
-    - cron: "5 */3 * * *" # 每3小時更新一次
+    - cron: "5 1,4,7,10,13,16,19,22 * * *"  # 每天tw3整點05分觸發
   workflow_dispatch:  # 手動觸發
 
 jobs:
