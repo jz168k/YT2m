@@ -12,50 +12,64 @@ on:
     - cron: "0 13 * * *"   # 台灣時間 21:00
     - cron: "0 17 * * *"   # 台灣時間 01:00
     - cron: "0 20 * * *"   # 台灣時間 04:00
-  workflow_dispatch:  # 可手動觸發
+  workflow_dispatch:  # 手動觸發
 
 jobs:
   update_m3u8:
     runs-on: ubuntu-latest
     env:
-      SF_L: ${{ secrets.SF_L }}
+      SF_L: ${{ secrets.SF_L }}  # 設定環境變數 SF_L，來自 GitHub Secrets
 
     steps:
-      - name: 📥 Checkout repository
+      # Checkout the repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      # Set up Python
+      - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.9
+          python-version: '3.9'
 
-      - name: 📦 Install dependencies
-        run: pip install -U requests paramiko
+      # Install dependencies
+      - name: Install dependencies
+        run: |
+          pip install -U yt-dlp paramiko
 
-      - name: 🔐 Decode YT_COOKIE_B64 to cookies.txt
+      # Decode YT_COOKIE_B64 and generate cookies.txt
+      - name: Output YT_COOKIE_B64 to cookie01.txt
+        run: echo "${{ secrets.YT_COOKIE_B64 }}" | base64 --decode > cookie01.txt 
+
+      - name: Decode and generate cookies.txt
         run: |
           if [ -z "${{ secrets.YT_COOKIE_B64 }}" ]; then
             echo "❌ 環境變數 YT_COOKIE_B64 未設置"
             exit 1
           fi
+
+          # 解碼 YT_COOKIE_B64 並生成 cookies.txt
           echo "${{ secrets.YT_COOKIE_B64 }}" | base64 --decode | tr -d '\r' > cookies.txt
           echo "✅ cookies.txt 生成完成"
 
-      - name: 🔍 Run yt_m.py to parse M3U8
+      # Run the Python script (yt_m.py)
+      - name: Run yt_m.py to parse M3U8
         run: |
-          echo "🚀 執行 scripts/yt_m.py"
+          echo "🔍 開始執行 yt_m.py"
           python3 scripts/yt_m.py
 
-      - name: 🧹 Clean up cookies.txt
+      # Remove cookies.txt for privacy
+      - name: Clean up cookies.txt
         run: |
           rm -f cookies.txt
           echo "✅ cookies.txt 已刪除"
 
-      - name: 💾 Commit and push changes
+      # Commit and push changes to GitHub
+      - name: Commit and push changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
+          # Check for changes in the output directory
           if [[ -n "$(git status --porcelain output/)" ]]; then
             echo "📂 偵測到 output 變更，開始提交..."
             git add output/
