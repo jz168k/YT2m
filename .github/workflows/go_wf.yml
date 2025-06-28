@@ -2,74 +2,61 @@ name: Auto Update File to GitHub
 
 on:
   schedule:
-    - cron: "40 23 * * *"  # 台灣時間 07:40（前一天 UTC 23:40）
-    - cron: "5 0 * * *"    # 台灣時間 08:05
-    - cron: "35 0 * * *"   # 台灣時間 08:35
-    - cron: "5 1 * * *"    # 台灣時間 09:05
-    - cron: "0 4 * * *"    # 台灣時間 12:00
-    - cron: "0 7 * * *"    # 台灣時間 15:00
-    - cron: "0 10 * * *"   # 台灣時間 18:00
-    - cron: "0 13 * * *"   # 台灣時間 21:00
-    - cron: "0 17 * * *"   # 台灣時間 01:00
-    - cron: "0 20 * * *"   # 台灣時間 04:00
-  workflow_dispatch:  # 手動觸發
+    - cron: "40 23 * * *"  # 台灣 07:40
+    - cron: "5 0 * * *"    # 台灣 08:05
+    - cron: "35 0 * * *"   # 台灣 08:35
+    - cron: "5 1 * * *"    # 台灣 09:05
+    - cron: "0 4 * * *"    # 台灣 12:00
+    - cron: "0 7 * * *"    # 台灣 15:00
+    - cron: "0 10 * * *"   # 台灣 18:00
+    - cron: "0 13 * * *"   # 台灣 21:00
+    - cron: "0 17 * * *"   # 台灣 01:00
+    - cron: "0 20 * * *"   # 台灣 04:00
+  workflow_dispatch:       # 手動執行
 
 jobs:
   update_m3u8:
     runs-on: ubuntu-latest
     env:
-      SF_L: ${{ secrets.SF_L }}  # 設定環境變數 SF_L，來自 GitHub Secrets
+      SF_L: ${{ secrets.SF_L }}
 
     steps:
-      # Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.9'
+          python-version: 3.9
 
-      # Install dependencies
       - name: Install dependencies
         run: |
-          pip install -U yt-dlp paramiko
+          pip install -U requests paramiko
 
-      # Decode YT_COOKIE_B64 and generate cookies.txt
-      - name: Output YT_COOKIE_B64 to cookie01.txt
-        run: echo "${{ secrets.YT_COOKIE_B64 }}" | base64 --decode > cookie01.txt 
-
-      - name: Decode and generate cookies.txt
+      - name: Decode YT_COOKIE_B64 to cookies.txt
         run: |
           if [ -z "${{ secrets.YT_COOKIE_B64 }}" ]; then
             echo "❌ 環境變數 YT_COOKIE_B64 未設置"
             exit 1
           fi
-
-          # 解碼 YT_COOKIE_B64 並生成 cookies.txt
           echo "${{ secrets.YT_COOKIE_B64 }}" | base64 --decode | tr -d '\r' > cookies.txt
-          echo "✅ cookies.txt 生成完成"
+          echo "✅ cookies.txt 已解碼完成"
 
-      # Run the Python script (yt_m.py)
       - name: Run yt_m.py to parse M3U8
         run: |
-          echo "🔍 開始執行 yt_m.py"
+          echo "🚀 執行 scripts/yt_m.py"
           python3 scripts/yt_m.py
 
-      # Remove cookies.txt for privacy
       - name: Clean up cookies.txt
         run: |
           rm -f cookies.txt
           echo "✅ cookies.txt 已刪除"
 
-      # Commit and push changes to GitHub
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-          # Check for changes in the output directory
           if [[ -n "$(git status --porcelain output/)" ]]; then
             echo "📂 偵測到 output 變更，開始提交..."
             git add output/
