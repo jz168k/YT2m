@@ -8,7 +8,7 @@ yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
 
-# 從 GitHub Secrets 環境變數讀取 SFTP 資訊
+# 從環境變數讀取 SFTP 連線資訊
 SF_L = os.getenv("SF_L", "")
 if not SF_L:
     print("❌ 環境變數 SF_L 未設置")
@@ -21,30 +21,37 @@ SFTP_USER = parsed_url.username
 SFTP_PASSWORD = parsed_url.password
 SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 
+# 確保輸出資料夾存在
 os.makedirs(output_dir, exist_ok=True)
 
 def resolve_to_watch_url(youtube_url):
-    """解析 @channel/live → 實際 watch?v=xxx 頁面"""
+    """解析 @xxx/live → 真實 watch?v=xxx 頁面"""
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get(youtube_url, headers=headers, timeout=10)
         html = res.text
 
+        # 判斷是否有 canonical URL 指向 watch?v=xxx
         match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
         if match:
             return match.group(1)
+
+        # 判斷是否未直播（頁面含有 noindex）
+        if 'noindex' in html:
+            print("⚠️ 頻道目前未開啟直播")
         else:
-            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL")
+            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL（可能頁面格式改變）")
+
     except Exception as e:
         print(f"⚠️ 無法取得最終直播網址: {e}")
-    return youtube_url
+    return None
 
 def grab(youtube_url):
+    """從 YouTube 頁面中提取 m3u8"""
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
 
-    # 嘗試讀取 cookies.txt
     cookies = {}
     if os.path.exists(cookies_path):
         try:
@@ -59,13 +66,12 @@ def grab(youtube_url):
 
     try:
         resolved_url = resolve_to_watch_url(youtube_url)
-        print(f"🔁 轉址後 URL: {resolved_url}")
+        if not resolved_url:
+            return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
+        print(f"🔁 轉址後 URL: {resolved_url}")
         res = requests.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
-
-        if 'noindex' in html:
-            print("⚠️ 頻道目前未開啟直播")
 
         m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
         for url in m3u8_matches:
@@ -73,6 +79,7 @@ def grab(youtube_url):
                 return url
 
         print("⚠️ 未找到有效的 .m3u8 連結")
+
     except Exception as e:
         print(f"⚠️ 抓取頁面失敗: {e}")
 
