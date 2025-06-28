@@ -1,91 +1,47 @@
 import os
-import re
-import requests
+import subprocess
 import paramiko
 from urllib.parse import urlparse
+import base64
 
+# 設定檔案路徑
 yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
 
 # 從環境變數讀取 SFTP 連線資訊
 SF_L = os.getenv("SF_L", "")
+
 if not SF_L:
     print("❌ 環境變數 SF_L 未設置")
     exit(1)
 
+# 解析 SFTP URL
 parsed_url = urlparse(SF_L)
+
 SFTP_HOST = parsed_url.hostname
-SFTP_PORT = parsed_url.port if parsed_url.port else 22
+SFTP_PORT = parsed_url.port if parsed_url.port else 22  # 預設 SFTP 端口 22
 SFTP_USER = parsed_url.username
 SFTP_PASSWORD = parsed_url.password
-SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
+SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"  # 取得路徑部分
 
-# 確保輸出資料夾存在
+# 確保輸出目錄存在
 os.makedirs(output_dir, exist_ok=True)
 
-def resolve_to_watch_url(youtube_url):
-    """解析 @xxx/live → 真實 watch?v=xxx 頁面"""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(youtube_url, headers=headers, timeout=10)
-        html = res.text
-
-        # 判斷是否有 canonical URL 指向 watch?v=xxx
-        match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
-        if match:
-            return match.group(1)
-
-        # 判斷是否未直播（頁面含有 noindex）
-        if 'noindex' in html:
-            print("⚠️ 頻道目前未開啟直播")
-        else:
-            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL（可能頁面格式改變）")
-
-    except Exception as e:
-        print(f"⚠️ 無法取得最終直播網址: {e}")
-    return None
-
 def grab(youtube_url):
-    """從 YouTube 頁面中提取 m3u8"""
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    cookies = {}
-    if os.path.exists(cookies_path):
-        try:
-            with open(cookies_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.startswith('#') and '\t' in line:
-                        parts = line.strip().split('\t')
-                        if len(parts) >= 6:
-                            cookies[parts[5]] = parts[6]
-        except Exception as e:
-            print(f"⚠️ Cookie 讀取失敗: {e}")
-
+    """使用 yt-dlp 解析 M3U8 連結"""
+    yt_dlp_cmd = f"yt-dlp --cookies cookies.txt -f 'best[height=720]' -g {youtube_url}"
     try:
-        resolved_url = resolve_to_watch_url(youtube_url)
-        if not resolved_url:
-            return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
-
-        print(f"🔁 轉址後 URL: {resolved_url}")
-        res = requests.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
-        html = res.text
-
-        m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
-        for url in m3u8_matches:
-            if "googlevideo.com" in url and "mime=video" in url:
-                return url
-
-        print("⚠️ 未找到有效的 .m3u8 連結")
-
-    except Exception as e:
-        print(f"⚠️ 抓取頁面失敗: {e}")
-
-    return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
+        result = subprocess.run(yt_dlp_cmd, shell=True, capture_output=True, text=True, check=True)
+        m3u8_url = result.stdout.strip()
+        if m3u8_url.startswith("http"):
+            return m3u8_url
+    except subprocess.CalledProcessError as e:
+        print(f"⚠️ yt-dlp 解析失敗，錯誤訊息: {e.stderr}")
+    return "https://raw.githubusercontent.com/dks-123/YT2m/main/assets/no_s.m3u8"  # 預設無訊號M3U8
 
 def process_yt_info():
+    """解析 yt_info.txt 並生成 M3U8 和 PHP 檔案"""
     with open(yt_info_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -94,19 +50,21 @@ def process_yt_info():
         line = line.strip()
         if line.startswith("~~") or not line:
             continue
-        if "|" in line:
+        if "|" in line:  # 頻道資訊行
             parts = line.split("|")
             channel_name = parts[0].strip() if len(parts) > 0 else f"Channel {i}"
-        else:
+        else:  # YouTube 連結行
             youtube_url = line
             print(f"🔍 嘗試解析 M3U8: {youtube_url}")
             m3u8_url = grab(youtube_url)
 
+            # 生成 M3U8 文件
             m3u8_content = f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\n{m3u8_url}\n"
             output_m3u8 = os.path.join(output_dir, f"y{i:02d}.m3u8")
             with open(output_m3u8, "w", encoding="utf-8") as f:
                 f.write(m3u8_content)
 
+            # 生成 PHP 文件
             php_content = f"""<?php
 header('Location: {m3u8_url}');
 ?>"""
@@ -118,14 +76,17 @@ header('Location: {m3u8_url}');
             i += 1
 
 def upload_files():
+    """使用 SFTP 上傳 M3U8 檔案"""
     print("🚀 啟動 SFTP 上傳程序...")
     try:
+        
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
         transport.connect(username=SFTP_USER, password=SFTP_PASSWORD)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
         print(f"✅ 成功連接到 SFTP：{SFTP_HOST}")
 
+        # 確保遠端目錄存在
         try:
             sftp.chdir(SFTP_REMOTE_DIR)
         except IOError:
@@ -133,9 +94,11 @@ def upload_files():
             sftp.mkdir(SFTP_REMOTE_DIR)
             sftp.chdir(SFTP_REMOTE_DIR)
 
+        # 上傳所有檔案
         for file in os.listdir(output_dir):
             local_path = os.path.join(output_dir, file)
             remote_path = os.path.join(SFTP_REMOTE_DIR, file)
+            print(f"Local file: {local_path}")
             if os.path.isfile(local_path):
                 print(f"⬆️ 上傳 {local_path} → {remote_path}")
                 sftp.put(local_path, remote_path)
