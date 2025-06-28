@@ -12,7 +12,7 @@ on:
     - cron: "0 13 * * *"   # 台灣 21:00
     - cron: "0 17 * * *"   # 台灣 01:00
     - cron: "0 20 * * *"   # 台灣 04:00
-  workflow_dispatch:       # 手動執行
+  workflow_dispatch:       # 手動觸發
 
 jobs:
   update_m3u8:
@@ -31,7 +31,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -U requests paramiko
+          pip install -U requests paramiko yt-dlp
 
       - name: Decode YT_COOKIE_B64 to cookies.txt
         run: |
