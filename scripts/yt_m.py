@@ -46,12 +46,6 @@ def grab(youtube_url):
     try:
         res = requests.get(youtube_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
-        match = re.search(r"watch\\?v=([\w-]{11})", html)
-        if not match:
-            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL（可能頁面格式變更）")
-        else:
-            video_id = match.group(1)
-            print(f"🔗 提取到影片 ID: {video_id}")
 
         m3u8_matches = re.findall(r'https://[^\s"\']+\.m3u8', html)
         for url in m3u8_matches:
