@@ -32,6 +32,9 @@ jobs:
       - name: Install Python dependencies
         run: pip install -U requests paramiko
 
+      - name: Install yt-dlp
+        run: python3 -m pip install -U yt-dlp
+
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |
           echo "${{ secrets.YT_COOKIE_B64_P1 }}" > cookies.b64
