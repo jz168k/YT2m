@@ -1,18 +1,22 @@
 import os
 import re
 import requests
+import subprocess
 import paramiko
 from urllib.parse import urlparse
 
+# 設定檔案路徑
 yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
 
+# 從環境變數讀取 SFTP 連線資訊
 SF_L = os.getenv("SF_L", "")
 if not SF_L:
     print("❌ 環境變數 SF_L 未設置")
     exit(1)
 
+# 解析 SFTP URL
 parsed_url = urlparse(SF_L)
 SFTP_HOST = parsed_url.hostname
 SFTP_PORT = parsed_url.port if parsed_url.port else 22
@@ -20,29 +24,14 @@ SFTP_USER = parsed_url.username
 SFTP_PASSWORD = parsed_url.password
 SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 
+# 確保輸出目錄存在
 os.makedirs(output_dir, exist_ok=True)
 
-def resolve_to_watch_url(youtube_url):
-    """從 /@channel/live 找出實際 /watch?v=xxx"""
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(youtube_url, headers=headers, timeout=10)
-        html = res.text
-        match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
-        if match:
-            return match.group(1)
-        if 'noindex' in html:
-            print("⚠️ 頻道目前未開啟直播")
-        else:
-            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL（可能頁面格式變更）")
-    except Exception as e:
-        print(f"⚠️ 無法取得最終直播網址: {e}")
-    return None
-
 def grab(youtube_url):
-    """嘗試 HTML 解析 .m3u8，如果失敗改用 yt-dlp 備援"""
+    """從 HTML 或 yt-dlp 取得 M3U8 連結"""
     headers = {"User-Agent": "Mozilla/5.0"}
     cookies = {}
+
     if os.path.exists(cookies_path):
         try:
             with open(cookies_path, "r", encoding="utf-8") as f:
@@ -54,45 +43,47 @@ def grab(youtube_url):
         except Exception as e:
             print(f"⚠️ Cookie 讀取失敗: {e}")
 
-    # 優先使用 HTML 解析
     try:
-        resolved_url = resolve_to_watch_url(youtube_url)
-        if not resolved_url:
-            return fallback_ytdlp(youtube_url)
-
-        print(f"🔁 轉址後 URL: {resolved_url}")
-        res = requests.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
+        res = requests.get(youtube_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
+        match = re.search(r"watch\\?v=([\w-]{11})", html)
+        if not match:
+            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL（可能頁面格式變更）")
+        else:
+            video_id = match.group(1)
+            print(f"🔗 提取到影片 ID: {video_id}")
 
-        m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
+        m3u8_matches = re.findall(r'https://[^"']+\.m3u8', html)
         for url in m3u8_matches:
-            if "googlevideo.com" in url and "mime=video" in url:
-                print("✅ 成功取得 m3u8（HTML 解析）")
+            if "googlevideo.com" in url:
+                print("✅ 成功從 HTML 取得 m3u8")
                 return url
 
-        print("⚠️ HTML 中未找到有效 .m3u8，使用 yt-dlp 備援")
-        return fallback_ytdlp(youtube_url)
-
     except Exception as e:
-        print(f"⚠️ HTML 抓取失敗: {e}")
-        return fallback_ytdlp(youtube_url)
+        print(f"⚠️ 抓取頁面失敗: {e}")
 
-def fallback_ytdlp(youtube_url):
-    """使用 yt-dlp 解析 .m3u8"""
+    # 使用 yt-dlp 備援
+    print(f"⚙️ 執行 yt-dlp: yt-dlp -f b --cookies {cookies_path} -g {youtube_url}")
     try:
-        cmd = f"yt-dlp -f best --cookies {cookies_path} -g {youtube_url}"
-        print(f"⚙️ 執行 yt-dlp: {cmd}")
-        result = os.popen(cmd).read().strip()
-        if result.startswith("http") and ".m3u8" in result:
+        result = subprocess.run([
+            "yt-dlp", "-f", "b", "--cookies", cookies_path, "-g", youtube_url
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+
+        if result.returncode == 0 and result.stdout.strip():
+            m3u8_url = result.stdout.strip().splitlines()[0]
             print("✅ 成功取得 m3u8（yt-dlp）")
-            return result
+            return m3u8_url
         else:
             print("⚠️ yt-dlp 無回傳有效 URL")
+            print(result.stderr)
+
     except Exception as e:
-        print(f"❌ yt-dlp 解析錯誤: {e}")
+        print(f"❌ yt-dlp 執行失敗: {e}")
+
     return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
 def process_yt_info():
+    """解析 yt_info.txt 並生成 M3U8 和 PHP 檔案"""
     with open(yt_info_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -106,7 +97,7 @@ def process_yt_info():
             channel_name = parts[0].strip() if len(parts) > 0 else f"Channel {i}"
         else:
             youtube_url = line
-            print(f"\n🔍 嘗試解析 M3U8: {youtube_url}")
+            print(f"🔍 嘗試解析 M3U8: {youtube_url}")
             m3u8_url = grab(youtube_url)
 
             m3u8_content = f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\n{m3u8_url}\n"
@@ -114,9 +105,7 @@ def process_yt_info():
             with open(output_m3u8, "w", encoding="utf-8") as f:
                 f.write(m3u8_content)
 
-            php_content = f"""<?php
-header('Location: {m3u8_url}');
-?>"""
+            php_content = f"""<?php\nheader('Location: {m3u8_url}');\n?>"""
             output_php = os.path.join(output_dir, f"y{i:02d}.php")
             with open(output_php, "w", encoding="utf-8") as f:
                 f.write(php_content)
@@ -125,13 +114,15 @@ header('Location: {m3u8_url}');
             i += 1
 
 def upload_files():
-    print("\n🚀 啟動 SFTP 上傳程序...")
+    """使用 SFTP 上傳 M3U8 檔案"""
+    print("🚀 啟動 SFTP 上傳程序...")
     try:
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
         transport.connect(username=SFTP_USER, password=SFTP_PASSWORD)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
         print(f"✅ 成功連接到 SFTP：{SFTP_HOST}")
+
         try:
             sftp.chdir(SFTP_REMOTE_DIR)
         except IOError:
@@ -156,3 +147,4 @@ def upload_files():
 if __name__ == "__main__":
     process_yt_info()
     upload_files()
+
