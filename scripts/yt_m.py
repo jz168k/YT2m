@@ -4,18 +4,16 @@ import requests
 import paramiko
 from urllib.parse import urlparse
 
-# 設定檔案路徑
 yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
 
-# 從環境變數讀取 SFTP 連線資訊
+# 從 GitHub Secrets 環境變數讀取 SFTP 資訊
 SF_L = os.getenv("SF_L", "")
 if not SF_L:
     print("❌ 環境變數 SF_L 未設置")
     exit(1)
 
-# 解析 SFTP URL
 parsed_url = urlparse(SF_L)
 SFTP_HOST = parsed_url.hostname
 SFTP_PORT = parsed_url.port if parsed_url.port else 22
@@ -23,26 +21,30 @@ SFTP_USER = parsed_url.username
 SFTP_PASSWORD = parsed_url.password
 SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 
-# 確保輸出目錄存在
 os.makedirs(output_dir, exist_ok=True)
 
 def resolve_to_watch_url(youtube_url):
-    """轉址至最終 watch?v=... 頁面"""
+    """解析 @channel/live → 實際 watch?v=xxx 頁面"""
     try:
-        res = requests.get(youtube_url, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True, timeout=10)
-        final_url = res.url
-        if "watch?v=" in final_url:
-            return final_url
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(youtube_url, headers=headers, timeout=10)
+        html = res.text
+
+        match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
+        if match:
+            return match.group(1)
+        else:
+            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL")
     except Exception as e:
-        print(f"⚠️ 無法解析最終直播網址: {e}")
+        print(f"⚠️ 無法取得最終直播網址: {e}")
     return youtube_url
 
 def grab(youtube_url):
-    """從 YouTube HTML 解析 M3U8 連結"""
     headers = {
         "User-Agent": "Mozilla/5.0"
     }
 
+    # 嘗試讀取 cookies.txt
     cookies = {}
     if os.path.exists(cookies_path):
         try:
@@ -62,8 +64,8 @@ def grab(youtube_url):
         res = requests.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
 
-        if "This live stream recording is not available" in html:
-            print("⚠️ 此直播目前未播放")
+        if 'noindex' in html:
+            print("⚠️ 頻道目前未開啟直播")
 
         m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
         for url in m3u8_matches:
@@ -77,7 +79,6 @@ def grab(youtube_url):
     return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
 def process_yt_info():
-    """解析 yt_info.txt 並生成 M3U8 和 PHP 檔案"""
     with open(yt_info_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -110,7 +111,6 @@ header('Location: {m3u8_url}');
             i += 1
 
 def upload_files():
-    """使用 SFTP 上傳 M3U8 檔案"""
     print("🚀 啟動 SFTP 上傳程序...")
     try:
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
