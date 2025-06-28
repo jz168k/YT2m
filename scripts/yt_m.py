@@ -53,7 +53,7 @@ def grab(youtube_url):
             video_id = match.group(1)
             print(f"🔗 提取到影片 ID: {video_id}")
 
-        m3u8_matches = re.findall(r'https://[^"']+\.m3u8', html)
+        m3u8_matches = re.findall(r'https://[^\s"\']+\.m3u8', html)
         for url in m3u8_matches:
             if "googlevideo.com" in url:
                 print("✅ 成功從 HTML 取得 m3u8")
