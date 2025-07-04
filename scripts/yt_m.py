@@ -15,9 +15,7 @@ cookies_path = os.path.join(os.getcwd(), "cookies.txt")
 SF_L = os.getenv("SF_L")
 SF_M = os.getenv("SF_M")
 SF_B = os.getenv("SF_B")
-
-sftp_targets = [SF_L, SF_M, SF_B]
-sftp_targets = [s for s in sftp_targets if s]
+sftp_targets = [s for s in [SF_L, SF_M, SF_B] if s]
 
 # ---------- 解析 M3U8 ----------
 
@@ -147,18 +145,19 @@ def main():
     entries = parse_yt_info(yt_info_path)
     for info_line, url in entries:
         try:
-            name, group, logo, tvg_id = [x.strip() for x in info_line.split("|")] + [""] * 4
+            parts = [x.strip() for x in info_line.split("|")]
+            name, group, logo, tvg_id = (parts + [""] * 4)[:4]  # ✅ 容錯：多欄位只取前4
             print(f"\n🔍 嘗試解析 M3U8: {url}")
             m3u8_url = get_m3u8(url)
             if m3u8_url:
                 write_m3u8_entry(output_path, name, group, logo, tvg_id, m3u8_url)
-                sleep(1)  # 防止連續請求過快
+                sleep(1)
             else:
                 print(f"❌ 無法取得 M3U8: {url}")
         except Exception as e:
             print(f"❌ 錯誤處理頻道 [{info_line}]: {repr(e)}")
 
-    # 上傳到 SFTP（若檔案存在）
+    # SFTP 上傳
     if os.path.exists(output_path):
         for target in sftp_targets:
             upload_via_sftp(target, output_path, "yt.m3u8")
