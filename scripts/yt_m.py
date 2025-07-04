@@ -12,9 +12,7 @@ cookies_path = os.path.join(os.getcwd(), "cookies.txt")
 
 # SFTP 環境變數
 SF_L = os.getenv("SF_L")
-SF_M = os.getenv("SF_M")
-SF_B = os.getenv("SF_B")
-sftp_targets = [s for s in [SF_L, SF_M, SF_B] if s]
+sftp_targets = [s for s in [SF_L] if s]
 
 def extract_m3u8_from_html(html):
     matches = re.findall(r'(https://[^"]+\.m3u8)', html)
