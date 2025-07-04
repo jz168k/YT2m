@@ -1,9 +1,9 @@
 import os
 import re
-import requests
 import subprocess
+import requests
 import paramiko
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 # 設定檔案路徑
 yt_info_path = "yt_info.txt"
@@ -27,11 +27,47 @@ SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 # 確保輸出目錄存在
 os.makedirs(output_dir, exist_ok=True)
 
+def get_html(url, headers=None, cookies=None):
+    """先用 requests，失敗 fallback 用 cloudscraper"""
+    try:
+        res = requests.get(url, headers=headers, cookies=cookies, timeout=10)
+        return res.text
+    except Exception as e:
+        print(f"⚠️ requests 抓取失敗: {e}，fallback 用 cloudscraper")
+        try:
+            import cloudscraper
+            scraper = cloudscraper.create_scraper()
+            res = scraper.get(url, headers=headers, cookies=cookies, timeout=10)
+            return res.text
+        except Exception as e2:
+            print(f"❌ cloudscraper 也失敗: {e2}")
+            return ""
+
+def extract_720p_variant(master_url):
+    """從 master.m3u8 內選出最高 <=720p 的 variant"""
+    try:
+        content = requests.get(master_url, timeout=10).text
+        variants = re.findall(r'#EXT-X-STREAM-INF:.*RESOLUTION=(\d+)x(\d+).*?\n(.*)', content)
+        filtered = [(int(w), int(h), url) for w, h, url in variants if int(h) <= 720]
+        if not filtered:
+            print("⚠️ 無 720p 以下的 variant，使用原始 m3u8")
+            return master_url
+        best = max(filtered, key=lambda x: x[1])
+        best_url = best[2].strip()
+        if not best_url.startswith("http"):
+            best_url = urljoin(master_url, best_url)
+        print(f"🎯 選擇 720p variant：{best_url}")
+        return best_url
+    except Exception as e:
+        print(f"⚠️ 解析 variant 失敗: {e}")
+        return master_url
+
 def grab(youtube_url):
-    """從 HTML 或 yt-dlp 取得 M3U8 連結"""
+    """從 HTML 或 yt-dlp 取得 M3U8（最高 720p）"""
     headers = {"User-Agent": "Mozilla/5.0"}
     cookies = {}
 
+    # 嘗試讀取 cookies
     if os.path.exists(cookies_path):
         try:
             with open(cookies_path, "r", encoding="utf-8") as f:
@@ -43,24 +79,25 @@ def grab(youtube_url):
         except Exception as e:
             print(f"⚠️ Cookie 讀取失敗: {e}")
 
+    # 嘗試從 HTML 擷取 m3u8
     try:
-        res = requests.get(youtube_url, headers=headers, cookies=cookies, timeout=10)
-        html = res.text
-
+        html = get_html(youtube_url, headers=headers, cookies=cookies)
         m3u8_matches = re.findall(r'https://[^\s"\']+\.m3u8', html)
         for url in m3u8_matches:
             if "googlevideo.com" in url:
                 print("✅ 成功從 HTML 取得 m3u8")
-                return url
-
+                return extract_720p_variant(url)
     except Exception as e:
-        print(f"⚠️ 抓取頁面失敗: {e}")
+        print(f"⚠️ HTML 擷取失敗: {e}")
 
-    # 使用 yt-dlp 備援
-    print(f"⚙️ 執行 yt-dlp: yt-dlp -f b --cookies {cookies_path} -g {youtube_url}")
+    # fallback 使用 yt-dlp
+    print(f"⚙️ 執行 yt-dlp: yt-dlp -f 'bestvideo[height<=720]+bestaudio/best[height<=720]' --cookies {cookies_path} -g {youtube_url}")
     try:
         result = subprocess.run([
-            "yt-dlp", "-f", "b", "--cookies", cookies_path, "-g", youtube_url
+            "yt-dlp",
+            "-f", "bestvideo[height<=720]+bestaudio/best[height<=720]",
+            "--cookies", cookies_path,
+            "-g", youtube_url
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
 
         if result.returncode == 0 and result.stdout.strip():
@@ -70,7 +107,6 @@ def grab(youtube_url):
         else:
             print("⚠️ yt-dlp 無回傳有效 URL")
             print(result.stderr)
-
     except Exception as e:
         print(f"❌ yt-dlp 執行失敗: {e}")
 
@@ -141,4 +177,3 @@ def upload_files():
 if __name__ == "__main__":
     process_yt_info()
     upload_files()
-
