@@ -19,25 +19,22 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SF_L: ${{ secrets.SF_L }}
+      SF_M: ${{ secrets.SF_M }}
+      SF_B: ${{ secrets.SF_B }}
 
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: 🐍 Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: 3.9
 
-      - name: Install Python dependencies
-        run: pip install -U requests paramiko
+      - name: 📦 Install Python dependencies
+        run: |
+          pip install -U requests paramiko yt-dlp cloudscraper
 
-      - name: Install yt-dlp
-        run: python3 -m pip install -U yt-dlp
-
-      - name: Install
-        run: pip install -U cloudscraper
-      
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |
           echo "${{ secrets.YT_COOKIE_B64_P1 }}" > cookies.b64
@@ -50,16 +47,24 @@ jobs:
           base64 -d cookies.b64 > cookies.txt
           echo "✅ cookies.txt 已生成"
 
+      - name: 📁 Ensure output folder exists
+        run: mkdir -p output
+
       - name: 🚀 Run yt_m.py to parse M3U8
         run: python3 scripts/yt_m.py
 
       - name: 🧹 Clean up temporary files
-        run: rm -f cookies.b64 cookies.txt
+        run: |
+          [ -f cookies.b64 ] && rm cookies.b64
+          [ -f cookies.txt ] && rm cookies.txt
 
-      - name: 📤 Commit and push output changes
+      - name: 🔧 Set up Git config
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
+
+      - name: 📤 Commit and push output changes
+        run: |
           if [[ -n "$(git status --porcelain output/)" ]]; then
             git add output/
             git commit -m "🔄 更新 M3U8 $(date '+%Y-%m-%d %H:%M:%S')"
@@ -67,4 +72,4 @@ jobs:
             echo "✅ 已提交變更"
           else
             echo "ℹ️ output 目錄無變更，略過提交"
-            fi
+          fi
