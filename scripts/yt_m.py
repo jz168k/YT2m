@@ -6,7 +6,6 @@ import paramiko
 from urllib.parse import urlparse
 from time import sleep
 
-# 設定
 yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
@@ -16,8 +15,6 @@ SF_L = os.getenv("SF_L")
 SF_M = os.getenv("SF_M")
 SF_B = os.getenv("SF_B")
 sftp_targets = [s for s in [SF_L, SF_M, SF_B] if s]
-
-# ---------- 解析 M3U8 ----------
 
 def extract_m3u8_from_html(html):
     matches = re.findall(r'(https://[^"]+\.m3u8)', html)
@@ -32,19 +29,14 @@ def grab_m3u8_from_html(url):
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "*/*",
-        "Connection": "keep-alive",
+        )
     }
-
     try:
         print(f"🔍 嘗試解析 M3U8 (requests): {url}")
         html = requests.get(url, headers=headers, timeout=10).text
         return extract_m3u8_from_html(html)
     except Exception as e1:
         print(f"⚠️ requests 失敗: {repr(e1)}，改用 cloudscraper")
-
         try:
             import cloudscraper
             scraper = cloudscraper.create_scraper()
@@ -84,8 +76,6 @@ def get_m3u8(url):
         return m3u8
     return fallback_yt_dlp(url)
 
-# ---------- 讀取 yt_info.txt ----------
-
 def parse_yt_info(path):
     with open(path, "r", encoding="utf-8") as f:
         lines = [line.strip() for line in f if line.strip()]
@@ -104,16 +94,26 @@ def parse_yt_info(path):
             i += 1
     return entries
 
-# ---------- 輸出 .m3u8 檔 ----------
-
-def write_m3u8_entry(filepath, name, group, logo, tvg_id, m3u8):
-    with open(filepath, "a", encoding="utf-8") as f:
+def write_single_m3u8(index, name, group, logo, tvg_id, m3u8_url):
+    filename = f"y{index:02d}.m3u8"
+    filepath = os.path.join(output_dir, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
         f.write(f'#EXTINF:-1 tvg-id="{tvg_id}" tvg-logo="{logo}" group-title="{group}",{name}\n')
-        f.write(f"{m3u8}\n")
+        f.write(f"{m3u8_url}\n")
+    print(f"✅ 已寫入 {filename}")
+    return filepath, filename
 
-# ---------- SFTP 上傳 ----------
+def write_php_redirect(index, m3u8_url):
+    filename = f"y{index:02d}.php"
+    filepath = os.path.join(output_dir, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("<?php\n")
+        f.write(f"header('Location: {m3u8_url}');\n")
+        f.write("?>\n")
+    print(f"✅ 已寫入 {filename}")
+    return filepath, filename
 
-def upload_via_sftp(sftp_url, local_path, remote_path):
+def upload_via_sftp(sftp_url, local_path, remote_name):
     try:
         parts = urlparse(sftp_url)
         hostname = parts.hostname
@@ -125,42 +125,38 @@ def upload_via_sftp(sftp_url, local_path, remote_path):
         transport.connect(username=username, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
 
-        sftp.put(local_path, remote_path)
-        print(f"✅ 已上傳到 SFTP: {hostname}/{remote_path}")
+        sftp.put(local_path, remote_name)
+        print(f"📤 已上傳到 SFTP: {hostname}/{remote_name}")
 
         sftp.close()
         transport.close()
     except Exception as e:
         print(f"❌ 上傳 SFTP 失敗 ({sftp_url}): {repr(e)}")
 
-# ---------- 主流程 ----------
-
 def main():
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "yt.m3u8")
-
-    if os.path.exists(output_path):
-        os.remove(output_path)
 
     entries = parse_yt_info(yt_info_path)
-    for info_line, url in entries:
+    for idx, (info_line, url) in enumerate(entries, 1):
         try:
             parts = [x.strip() for x in info_line.split("|")]
-            name, group, logo, tvg_id = (parts + [""] * 4)[:4]  # ✅ 容錯：多欄位只取前4
+            name, group, logo, tvg_id = (parts + [""] * 4)[:4]
             print(f"\n🔍 嘗試解析 M3U8: {url}")
             m3u8_url = get_m3u8(url)
             if m3u8_url:
-                write_m3u8_entry(output_path, name, group, logo, tvg_id, m3u8_url)
+                m3u8_path, m3u8_name = write_single_m3u8(idx, name, group, logo, tvg_id, m3u8_url)
+                php_path, php_name = write_php_redirect(idx, m3u8_url)
+
+                for target in sftp_targets:
+                    upload_via_sftp(target, m3u8_path, m3u8_name)
+                    # 若你要上傳 .php，一併啟用下行
+                    # upload_via_sftp(target, php_path, php_name)
+
                 sleep(1)
             else:
                 print(f"❌ 無法取得 M3U8: {url}")
         except Exception as e:
             print(f"❌ 錯誤處理頻道 [{info_line}]: {repr(e)}")
-
-    # SFTP 上傳
-    if os.path.exists(output_path):
-        for target in sftp_targets:
-            upload_via_sftp(target, output_path, "yt.m3u8")
 
 if __name__ == "__main__":
     main()
