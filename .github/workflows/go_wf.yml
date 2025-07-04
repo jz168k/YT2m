@@ -19,8 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SF_L: ${{ secrets.SF_L }}
-      SF_M: ${{ secrets.SF_M }}
-      SF_B: ${{ secrets.SF_B }}
+
 
     steps:
       - name: 📥 Checkout repository
