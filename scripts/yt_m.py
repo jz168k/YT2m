@@ -87,31 +87,15 @@ def get_live_video_id(channel_id):
 
 def grab_by_ytdlp(youtube_url):
     """使用 yt-dlp 嘗試抓取 720p 以下的 m3u8 串流"""
-
-    yt_header_auth = os.getenv("YT_HEADER_AUTH", "")
-    headers = []
-    if yt_header_auth:
-        try:
-            key, value = yt_header_auth.split(":", 1)
-            headers = ["--add-header", f"{key.strip()}:{value.strip()}"]
-            print("🛡️ 使用 Authorization header 傳入 yt-dlp")
-        except Exception as e:
-            print(f"⚠️ YT_HEADER_AUTH 格式錯誤: {e}")
-
-    if not headers and not os.path.exists(cookies_path):
-        print("⚠️ 未設置 Authorization header，也找不到 cookies.txt，yt-dlp 可能會失敗")
-
+    if not os.path.exists(cookies_path):
+        print("⚠️ 找不到 cookies.txt，yt-dlp 可能會受限")
+    
     cmd = [
         "yt-dlp",
         "-f", "best[ext=m3u8][height<=720]",
-        *headers
+        "--cookies", cookies_path,
+        "-g", youtube_url
     ]
-
-    if not headers:
-        cmd += ["--cookies", cookies_path]
-
-    cmd.append(youtube_url)
-
     try:
         print("⚙️ 執行 yt-dlp:", " ".join(cmd))
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
