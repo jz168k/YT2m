@@ -1,3 +1,3 @@
 <?php
-header('Location: https://manifest.googlevideo.com/api/manifest/hls_variant/expire/1751713601/ei/4bJoaPe3CaPzsfIP0aH1kQs/ip/40.118.135.164/id/-DpI0NLEz04.1/source/yt_live_broadcast/requiressl/yes/xpc/EgVo2aDSNQ%3D%3D/hfr/1/maxh/4320/maudio/1/siu/1/bui/AY1jyLOaJ7ML56s2Kk_AoKWTRZHt-pP2EbQaqimiHI7fTozp-qJh7YDvtXEhdFjvWUPRTC8rvA/spc/l3OVKYf_DNQehDKrhspiQRF3N_FT32Fd9hTDRCb5GOE6-SkbOTzgWD9XGFvtIQKjSbJ9BEcyqayMSlgeuWE/vprv/1/go/1/rqh/5/pacing/0/nvgoi/1/ncsapi/1/keepalive/yes/fexp/51355912/dover/11/itag/0/playlist_type/LIVE/sparams/expire%2Cei%2Cip%2Cid%2Csource%2Crequiressl%2Cxpc%2Chfr%2Cmaxh%2Cmaudio%2Csiu%2Cbui%2Cspc%2Cvprv%2Cgo%2Crqh%2Citag%2Cplaylist_type/sig/AJfQdSswRgIhAN5h-OtPf-4nHzumeo3rASQ2qoWddZcYioXpbqQ8KrXJAiEAg3rslgvaBhHP946MRI2q9r2gfb3oDICKeB1s5aAbd3s%3D/file/index.m3u8');
+header('Location: https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8');
 ?>
