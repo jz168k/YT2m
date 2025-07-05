@@ -1,7 +1,13 @@
 name: Auto Update File to GitHub
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: "5 0 * * *"    # 台灣時間 08:05
+    - cron: "56 0 * * *"    # 台灣時間 09:05
+    - cron: "53 4 * * *"    # 台灣時間 13:00
+    - cron: "51 8 * * *"    # 台灣時間 17:00
+    - cron: "33 11 * * *"   # 台灣時間 21:00
+  workflow_dispatch::
 
 jobs:
   update_m3u8:
