@@ -2,8 +2,8 @@ name: Auto Update File to GitHub
 
 on:
   schedule:
-    - cron: "0 0 * * *"    # 台灣時間 08:00
-    - cron: "0 1 * * *"    # 台灣時間 09:00
+    - cron: "5 0 * * *"    # 台灣時間 08:05
+    - cron: "0 1 * * *"    # 台灣時間 09:05
     - cron: "0 5 * * *"    # 台灣時間 13:00
     - cron: "0 9 * * *"    # 台灣時間 17:00
     - cron: "0 13 * * *"   # 台灣時間 21:00
@@ -15,18 +15,22 @@ jobs:
     env:
       SF_L: ${{ secrets.SF_L }}
       YT_API_KEY: ${{ secrets.YT_API_KEY }}
+      YT_HEADER_AUTH: ${{ secrets.YT_HEADER_AUTH }}
 
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.9
+          python-version: '3.9'
 
       - name: 📦 Install dependencies
-        run: pip install -U httpx[http2] paramiko
+        run: |
+          pip install -U yt-dlp httpx[http2] paramiko
+          sudo apt-get update
+          echo "✅ 已安裝 yt-dlp、httpx、paramiko "
 
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |
@@ -50,8 +54,8 @@ jobs:
 
       - name: 🧹 Clean up cookies.txt
         run: |
-          rm -f cookies.txt
-          echo "✅ cookies.txt 已刪除"
+          rm -f cookies.txt cookies.b64
+          echo "✅ cookies.txt 和 cookies.b64 已刪除"
 
       - name: 💾 Commit and push changes
         run: |
