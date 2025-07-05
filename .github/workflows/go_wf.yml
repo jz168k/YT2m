@@ -1,12 +1,6 @@
 name: Auto Update File to GitHub
 
 on:
-  schedule:
-    - cron: "5 0 * * *"    # 台灣時間 08:05
-    - cron: "0 1 * * *"    # 台灣時間 09:05
-    - cron: "0 5 * * *"    # 台灣時間 13:00
-    - cron: "0 9 * * *"    # 台灣時間 17:00
-    - cron: "0 13 * * *"   # 台灣時間 21:00
   workflow_dispatch:
 
 jobs:
@@ -15,7 +9,6 @@ jobs:
     env:
       SF_L: ${{ secrets.SF_L }}
       YT_API_KEY: ${{ secrets.YT_API_KEY }}
-      YT_HEADER_AUTH: ${{ secrets.YT_HEADER_AUTH }}
 
     steps:
       - name: 📥 Checkout repository
